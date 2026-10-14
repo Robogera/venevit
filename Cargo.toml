@@ -7,7 +7,10 @@ edition = "2024"
 anyhow = "1.0.104"
 axum = "0.8.9"
 colog = "1.4.0"
+config = "0.15.27"
 libmpv2 = "6.0.0"
 log = "0.4.34"
+serde = { version = "1.0.229", features = ["serde_derive"] }
+strum = { version = "0.28.0", features = ["derive", "strum_macros"] }
 systemd-journal-logger = "2.2.2"
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "sync"] }
