@@ -5,9 +5,11 @@ edition = "2024"
 
 [dependencies]
 anyhow = "1.0.104"
+async-anyhow-logger = "0.1.0"
 axum = "0.8.9"
 colog = "1.4.0"
 config = "0.15.27"
+html-escape = "0.3.0"
 libmpv2 = "6.0.0"
 log = "0.4.34"
 serde = { version = "1.0.229", features = ["serde_derive"] }
