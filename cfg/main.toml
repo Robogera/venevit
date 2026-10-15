@@ -1,0 +1,37 @@
+[idle]
+name = "Фон"
+main = "video/idle.mkv"
+looping = true
+
+[[playlist]]
+name = "Сценарий"
+main = "video/scenario.mkv"
+looping = true
+
+[[playlist]]
+name = "Фотозона 1"
+intro = "video/01_intro.mkv"
+main = "video/01_main.mkv"
+outro = "video/01_outro.mkv"
+looping = true
+
+[[playlist]]
+name = "Фотозона 2"
+intro = "video/02_intro.mkv"
+main = "video/02_main.mkv"
+outro = "video/02_outro.mkv"
+looping = true
+
+[[playlist]]
+name = "Фотозона 3"
+intro = "video/03_intro.mkv"
+main = "video/03_main.mkv"
+outro = "video/03_outro.mkv"
+looping = true
+
+[[playlist]]
+name = "Фотозона 4"
+intro = "video/04_intro.mkv"
+main = "video/04_main.mkv"
+outro = "video/04_outro.mkv"
+looping = true
