@@ -39,7 +39,7 @@ impl AppState {
             .enumerate()
             .map(|(i, f)| {
                 format!(
-                    r#"<form method="post" action="/play/{i}"><button>{}</button></form>"#,
+                    r#"<form method="post" action="/cmd/{i}"><button>{}</button></form>"#,
                     encode_text(&f.name)
                 )
             })
@@ -140,13 +140,26 @@ async fn main() -> Result<()> {
 
 fn apply(mpv: &Mpv, playlist: &[Fragment], idle: &Fragment, cmd: Command) -> Result<()> {
     match cmd {
-        Command::Play(i) => mpv.play(playlist.get(i).context("bad playlist index")?),
+        Command::Play(i) => {
+            info!("Playing fragment {i}");
+            mpv.play(playlist.get(i).context("bad playlist index")?)
+        }
         Command::Stop => {
+            info!("Stopping playback");
             mpv.clear_playlist()?;
             mpv.play(idle)
         }
-        Command::Pause => mpv.toggle_pause(),
-        Command::VolUp => mpv.command("add", &["volume", "5"]).context("vol up"),
-        Command::VolDown => mpv.command("add", &["volume", "-5"]).context("vol down"),
+        Command::Pause => {
+            info!("Toggling pause");
+            mpv.toggle_pause()
+        }
+        Command::VolUp => {
+            info!("Volume up");
+            mpv.command("add", &["volume", "5"]).context("vol up")
+        }
+        Command::VolDown => {
+            info!("Volume down");
+            mpv.command("add", &["volume", "-5"]).context("vol down")
+        }
     }
 }

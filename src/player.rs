@@ -1,6 +1,7 @@
 use crate::settings::Fragment;
 use anyhow::{Context, Result};
 use libmpv2::{events::*, *};
+use log::{debug, info, warn};
 use strum::{Display, EnumString};
 
 enum PlayMethod {
@@ -46,6 +47,7 @@ impl PlayerControl for Mpv {
 
         // Add the intro clip if any
         if let Some(intro) = fragment.intro.as_ref() {
+            debug!("Adding intro clip for {}...", fragment.name);
             queue.push((
                 intro.to_str().ok_or(Error::InvalidUtf8)?,
                 false,
@@ -54,6 +56,7 @@ impl PlayerControl for Mpv {
         }
 
         // Add the main clip
+        debug!("Adding main clip for {}...", fragment.name);
         queue.push((
             fragment.main.to_str().ok_or(Error::InvalidUtf8)?,
             fragment.looping,
@@ -62,6 +65,7 @@ impl PlayerControl for Mpv {
 
         // Add the outro clip if any
         if let Some(outro) = fragment.outro.as_ref() {
+            debug!("Adding outro clip for {}...", fragment.name);
             queue.push((
                 outro.to_str().ok_or(Error::InvalidUtf8)?,
                 false,
@@ -77,10 +81,12 @@ impl PlayerControl for Mpv {
             // If the main video is playing, queue the new clips and play next
             // To ensure the outro of the currently playing clip plays correctly (if any)
             Some(VideoType::Main) | None => {
+                debug!("Main/None is playing, queueing the new clips");
                 for (path, looping, video_type) in queue {
                     self.send_play_command(path, looping, video_type, PlayMethod::Queue)?;
-                    self.next()?;
                 }
+                self.ensure_not_paused()?;
+                self.next()?;
             }
 
             // If the transition (intro/outro) clip is playing, just start playing the new
@@ -88,10 +94,12 @@ impl PlayerControl for Mpv {
             // make it less jarring visually (all transitions are similar-ish enough being
             // grey ghost fog SFX)
             Some(VideoType::Transition) => {
+                debug!("Transition is playing, immediately playing the first new clip");
                 let ((path, looping, video_type), rest) = queue
                     .split_first()
                     .ok_or(anyhow::Error::msg("Empty clip queue"))?;
                 self.send_play_command(path, *looping, *video_type, PlayMethod::Immediately)?;
+                self.clear_playlist()?;
                 for (path, looping, video_type) in rest {
                     self.send_play_command(path, *looping, *video_type, PlayMethod::Queue)?;
                 }
@@ -115,7 +123,11 @@ impl PlayerControl for Mpv {
                     PlayMethod::Queue => "append",
                 },
                 "0",
-                &format!("loop-file={},{}", is_loop as u8, video_type.tag()),
+                &format!(
+                    "loop-file={},{}",
+                    if is_loop { "inf" } else { "no" },
+                    video_type.tag()
+                ),
             ],
         )
         .context("Play command failed")?;

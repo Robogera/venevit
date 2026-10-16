@@ -6,7 +6,7 @@ looping = true
 [[playlist]]
 name = "Сценарий"
 main = "video/scenario.mkv"
-looping = true
+looping = false
 
 [[playlist]]
 name = "Фотозона 1"
