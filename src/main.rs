@@ -104,6 +104,7 @@ async fn main() -> Result<()> {
     let mpv = Mpv::with_initializer(|m| {
         m.set_property("audio-device", "pipewire/combined")?;
         m.set_property("idle", "yes")?;
+        m.set_property("vo", "x11")?;
         m.set_property("keep-open", "yes")?;
         Ok(())
     })?;
@@ -129,7 +130,11 @@ async fn main() -> Result<()> {
 
     let listener =
         tokio::net::TcpListener::bind(format!("0.0.0.0:{:?}", http_port.unwrap_or(8080))).await?;
-    axum::serve(listener, app).await?;
+
+    tokio::select! {
+        r = axum::serve(listener, app) => { r?; }
+        _ = tokio::signal::ctrl_c() => { info!("shutting down"); }
+    }
     Ok(())
 }
 
