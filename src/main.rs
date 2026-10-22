@@ -11,7 +11,7 @@ use axum::{
 use html_escape::encode_text;
 use libmpv2::*;
 use log::{LevelFilter, error, info, warn};
-use player::PlayerControl;
+use player::{MpvControls, Player};
 use settings::{Fragment, Settings};
 use std::sync::Arc;
 use systemd_journal_logger::{JournalLog, connected_to_journal};
@@ -104,8 +104,9 @@ async fn main() -> Result<()> {
     let mpv = Mpv::with_initializer(|m| {
         m.set_property("audio-device", "pipewire/combined")?;
         m.set_property("idle", "yes")?;
-        m.set_property("vo", "x11")?;
         m.set_property("keep-open", "yes")?;
+        m.set_property("force-window", "immediate")?;
+        m.set_property("vo", "x11")?;
         Ok(())
     })?;
 
@@ -113,10 +114,12 @@ async fn main() -> Result<()> {
 
     let state = AppState::new(&playlist, tx);
 
+    let mut player = Player::new(idle);
+
     tokio::spawn(catch_with_context(|| "player worker", async move {
         mpv.play(&idle).context("Playing the idle clip")?;
         while let Some(cmd) = rx.recv().await {
-            if let Err(e) = apply(&mpv, &playlist, &idle, cmd) {
+            if let Err(e) = apply(&mpv, player, &playlist, cmd) {
                 error!("{cmd:?}: {e:#}");
             }
         }
@@ -138,26 +141,14 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn apply(mpv: &Mpv, playlist: &[Fragment], idle: &Fragment, cmd: Command) -> Result<()> {
+fn apply(mpv: &Mpv, player: Player, playlist: &[Fragment], cmd: Command) -> Result<()> {
     match cmd {
         Command::Play(i) => {
             info!("Playing fragment {i}");
-            mpv.play(playlist.get(i).context("bad playlist index")?)
+            mpv.render(player.play(playlist.get(i).context("bad playlist index")?))
+                .context("Rendering the chosen fragment failed")
         }
-        Command::Stop => {
-            info!("Stopping playback");
-            mpv.clear_playlist()?;
-            mpv.play(idle)
-        }
-        Command::Pause => {
-            info!("Toggling pause");
-            mpv.toggle_pause()
-        }
-        Command::VolUp => {
-            info!("Volume up");
-            mpv.command("add", &["volume", "5"]).context("vol up")
-        }
-        Command::VolDown => {
+        _ => {
             info!("Volume down");
             mpv.command("add", &["volume", "-5"]).context("vol down")
         }
