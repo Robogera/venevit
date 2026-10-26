@@ -10,12 +10,14 @@ use axum::{
 };
 use html_escape::encode_text;
 use libmpv2::*;
-use log::{LevelFilter, error, info, warn};
+use log::{LevelFilter, debug, error, info, warn};
 use player::{MpvControls, Player};
 use settings::{Fragment, Settings};
 use std::sync::Arc;
+use std::time::Duration;
 use systemd_journal_logger::{JournalLog, connected_to_journal};
 use tokio::sync::mpsc;
+use tokio::time::{MissedTickBehavior, interval};
 
 #[derive(Debug, Clone, Copy)]
 enum Command {
@@ -51,10 +53,10 @@ impl AppState {
                 r#"<!doctype html><html><head><meta charset="utf-8"><title>venevit</title></head>
 <body style="background:#fff">
 {buttons}
-<form method="post" action="/cmd/stop"><button>Stop</button></form>
-<form method="post" action="/cmd/pause"><button>Pause</button></form>
-<form method="post" action="/cmd/volup"><button>Vol Up</button></form>
-<form method="post" action="/cmd/voldown"><button>Vol Down</button></form>
+<form method="post" action="/cmd/stop"><button>Стоп</button></form>
+<form method="post" action="/cmd/pause"><button>Пауза/Продолжить</button></form>
+<form method="post" action="/cmd/volup"><button>Громкость +</button></form>
+<form method="post" action="/cmd/voldown"><button>Громкость -</button></form>
 </body></html>"#
             )),
         }
@@ -96,7 +98,7 @@ async fn main() -> Result<()> {
             .with_extra_fields(vec![("VERSION", env!("CARGO_PKG_VERSION"))])
             .install()?;
     } else {
-        colog::init();
+        env_logger::init();
     }
 
     log::set_max_level(LevelFilter::Info);
@@ -116,14 +118,26 @@ async fn main() -> Result<()> {
 
     let mut player = Player::new(idle);
 
-    tokio::spawn(catch_with_context(|| "player worker", async move {
-        mpv.play(&idle).context("Playing the idle clip")?;
-        while let Some(cmd) = rx.recv().await {
-            if let Err(e) = apply(&mpv, player, &playlist, cmd) {
-                error!("{cmd:?}: {e:#}");
+    let mut ticker = interval(Duration::from_millis(100));
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    let mut was_eof = false;
+    let player_handle = tokio::spawn(catch_with_context(|| "player worker", async move {
+        mpv.render(player.stop())?;
+        loop {
+            tokio::select! {
+                cmd = rx.recv() => {
+                    apply(&mpv, &mut player, &playlist, cmd.context("Invalid command")?)?;
+                }
+                _ = ticker.tick() => {
+                    let is_eof = matches!(mpv.get_property::<bool>("eof-reached"), Ok(true));
+                    if (false, true) == (was_eof, is_eof) {
+                         mpv.render(player.process_eof())?;
+                    }
+                    was_eof = is_eof;
+                }
             }
         }
-        Ok(())
     }));
 
     let app = Router::new()
@@ -137,20 +151,42 @@ async fn main() -> Result<()> {
     tokio::select! {
         r = axum::serve(listener, app) => { r?; }
         _ = tokio::signal::ctrl_c() => { info!("shutting down"); }
+        joined = player_handle => {
+            match joined {
+                Ok(()) => error!("Player exited unexpectedly"),
+                Err(e) => error!("Error: {:#}", e),
+            }
+        }
     }
     Ok(())
 }
 
-fn apply(mpv: &Mpv, player: Player, playlist: &[Fragment], cmd: Command) -> Result<()> {
+fn apply(mpv: &Mpv, player: &mut Player, playlist: &[Fragment], cmd: Command) -> Result<()> {
     match cmd {
         Command::Play(i) => {
             info!("Playing fragment {i}");
             mpv.render(player.play(playlist.get(i).context("bad playlist index")?))
                 .context("Rendering the chosen fragment failed")
         }
+        Command::Pause => {
+            info!("Toggling pause");
+            mpv.toggle_pause()
+        }
+        Command::VolUp => {
+            info!("Volume up");
+            mpv.change_vol(7)
+        }
+        Command::VolDown => {
+            info!("Volume up");
+            mpv.change_vol(-7)
+        }
+        Command::Stop => {
+            info!("Stop");
+            mpv.render(player.stop())
+                .context("Stop failed")
+        }
         _ => {
-            info!("Volume down");
-            mpv.command("add", &["volume", "-5"]).context("vol down")
+            todo!();
         }
     }
 }
