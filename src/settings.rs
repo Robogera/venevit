@@ -3,6 +3,7 @@ use std::env;
 use config::{Config, ConfigError, Environment, File};
 use serde::{Deserialize, Deserializer, de};
 use std::path::{Path, PathBuf};
+use std::net::IpAddr;
 
 #[derive(Debug, Clone)]
 pub struct VideoPath(PathBuf);
@@ -33,6 +34,12 @@ pub struct Settings {
     pub idle: Fragment,
     pub rotation_deg: Option<i64>,
     pub http_port: Option<u32>,
+    pub projectors: Vec<Projector>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Projector {
+    pub ip: IpAddr,
 }
 
 #[derive(Debug, Deserialize, Clone)]

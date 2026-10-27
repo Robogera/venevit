@@ -11,10 +11,11 @@ use axum::{
 use html_escape::encode_text;
 use libmpv2::*;
 use log::{LevelFilter, debug, error, info, warn};
+use pjlink::PjlinkDevice;
 use player::{MpvControls, Player};
-use settings::{Fragment, Settings};
-use std::sync::Arc;
+use settings::{Fragment, Projector, Settings};
 use std::time::Duration;
+use std::{iter::Peekable, sync::Arc};
 use systemd_journal_logger::{JournalLog, connected_to_journal};
 use tokio::sync::mpsc;
 use tokio::time::{MissedTickBehavior, interval};
@@ -26,6 +27,8 @@ enum Command {
     Pause,
     VolUp,
     VolDown,
+    ProjectorsOn,
+    ProjectorsOff,
 }
 
 #[derive(Clone)]
@@ -57,6 +60,8 @@ impl AppState {
 <form method="post" action="/cmd/pause"><button>Пауза/Продолжить</button></form>
 <form method="post" action="/cmd/volup"><button>Громкость +</button></form>
 <form method="post" action="/cmd/voldown"><button>Громкость -</button></form>
+<form method="post" action="/cmd/projectorson"><button>Стенд ВКЛ</button></form>
+<form method="post" action="/cmd/projectorsoff"><button>Стенд ВЫКЛ</button></form>
 </body></html>"#
             )),
         }
@@ -75,6 +80,8 @@ impl AppState {
             "pause" => Some(Command::Pause),
             "volup" => Some(Command::VolUp),
             "voldown" => Some(Command::VolDown),
+            "projectorsoff" => Some(Command::ProjectorsOff),
+            "projectorson" => Some(Command::ProjectorsOn),
             _ => key.parse().ok().map(Command::Play),
         };
         if let Some(command) = command {
@@ -90,6 +97,7 @@ async fn main() -> Result<()> {
         playlist,
         idle,
         http_port,
+        projectors,
         ..
     } = Settings::new()?;
 
@@ -110,7 +118,7 @@ async fn main() -> Result<()> {
         m.set_property("force-window", "immediate")?;
         m.set_property("vo", "x11")?;
         Ok(())
-    })?;
+    }).context("libMPV init failure")?;
 
     let (tx, mut rx) = mpsc::channel::<Command>(8);
 
@@ -127,7 +135,7 @@ async fn main() -> Result<()> {
         loop {
             tokio::select! {
                 cmd = rx.recv() => {
-                    apply(&mpv, &mut player, &playlist, cmd.context("Invalid command")?)?;
+                    apply(&mpv, &mut player, &playlist, &projectors, cmd.context("Invalid command")?)?;
                 }
                 _ = ticker.tick() => {
                     let is_eof = matches!(mpv.get_property::<bool>("eof-reached"), Ok(true));
@@ -161,7 +169,13 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-fn apply(mpv: &Mpv, player: &mut Player, playlist: &[Fragment], cmd: Command) -> Result<()> {
+fn apply(
+    mpv: &Mpv,
+    player: &mut Player,
+    playlist: &[Fragment],
+    projectors: &[Projector],
+    cmd: Command,
+) -> Result<()> {
     match cmd {
         Command::Play(i) => {
             info!("Playing fragment {i}");
@@ -182,11 +196,48 @@ fn apply(mpv: &Mpv, player: &mut Player, playlist: &[Fragment], cmd: Command) ->
         }
         Command::Stop => {
             info!("Stop");
-            mpv.render(player.stop())
-                .context("Stop failed")
+            mpv.render(player.stop()).context("Stop failed")
         }
-        _ => {
-            todo!();
+        Command::ProjectorsOn => {
+            info!("Projectors: ON");
+            set_projectors_power(projectors, true)
+        }
+        Command::ProjectorsOff => {
+            info!("Projectors: OFF");
+            set_projectors_power(projectors, false)
         }
     }
+}
+
+fn set_projectors_power(projectors: &[Projector], on: bool) -> Result<()> {
+    let action = if on {
+        PjlinkDevice::power_on
+    } else {
+        PjlinkDevice::power_off
+    };
+    let handles: Vec<_> = projectors
+        .iter()
+        .map(|projector| {
+            let ip = projector.ip.to_string();
+            tokio::task::spawn_blocking(move || -> Result<()> {
+                PjlinkDevice::new(&ip)
+                    .context("Couldn't create a Pjlink device")
+                    .and_then(|mut dev| {
+                        action(&mut dev)
+                            .map(drop)
+                            .context("Couldn't send command to Pjlink device")
+                    })
+            })
+        })
+        .collect();
+
+    tokio::task::block_in_place(|| futures::executor::block_on(futures::future::join_all(handles)))
+        .into_iter()
+        .map(|r| r.context("asdasd").and_then(|inner| inner))
+        .fold(Ok(()), |acc, r| {
+            if let Err(e) = &r {
+                warn!("{e:#}");
+            }
+            acc.and(r)
+        })
 }

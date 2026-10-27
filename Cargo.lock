@@ -695,6 +695,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47e1ffaa40ddd1f3ed91f717a33c8c0ee23fff369e3aa8772b9605cc1d22f4c3"
 
 [[package]]
+name = "md5"
+version = "0.3.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "79c56d6a0b07f9e19282511c83fc5b086364cbae4ba8c7d5f190c3d9b0425a48"
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -762,6 +768,15 @@ name = "pin-project-lite"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
+
+[[package]]
+name = "pjlink"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b40ad52994c3d858f9ee44f32b59bea033b9133f03e30f46b6e159f1bba32cef"
+dependencies = [
+ "md5",
+]
 
 [[package]]
 name = "portable-atomic"
@@ -1260,9 +1275,11 @@ dependencies = [
  "axum",
  "config",
  "env_logger",
+ "futures",
  "html-escape",
  "libmpv2",
  "log",
+ "pjlink",
  "serde",
  "strum",
  "systemd-journal-logger",

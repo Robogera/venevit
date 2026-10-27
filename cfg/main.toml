@@ -3,6 +3,9 @@ name = "Фон"
 main = "video/idle.mkv"
 looping = true
 
+[[projectors]]
+ip="127.0.0.1"
+
 [[playlist]]
 name = "Сценарий"
 main = "video/scenario.mkv"
