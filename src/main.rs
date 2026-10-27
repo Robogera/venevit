@@ -10,15 +10,16 @@ use axum::{
 };
 use html_escape::encode_text;
 use libmpv2::*;
-use log::{LevelFilter, debug, error, info, warn};
+use log::{LevelFilter, error, info, warn};
 use pjlink::PjlinkDevice;
 use player::{MpvControls, Player};
 use settings::{Fragment, Projector, Settings};
 use std::time::Duration;
-use std::{iter::Peekable, sync::Arc};
+use std::sync::Arc;
 use systemd_journal_logger::{JournalLog, connected_to_journal};
 use tokio::sync::mpsc;
 use tokio::time::{MissedTickBehavior, interval};
+use tower_http::services::ServeDir;
 
 #[derive(Debug, Clone, Copy)]
 enum Command {
@@ -44,7 +45,7 @@ impl AppState {
             .enumerate()
             .map(|(i, f)| {
                 format!(
-                    r#"<form method="post" action="/cmd/{i}"><button>{}</button></form>"#,
+                    r#"<form method="post" action="/cmd/{i}"><button class="vid">{}</button></form>"#,
                     encode_text(&f.name)
                 )
             })
@@ -53,15 +54,56 @@ impl AppState {
         AppState {
             tx,
             page: Arc::from(format!(
-                r#"<!doctype html><html><head><meta charset="utf-8"><title>venevit</title></head>
-<body style="background:#fff">
+                r#"<!doctype html><html lang="ru"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Музей-Усадьба Дмитрия Веневитинова</title>
+<style>
+*{{box-sizing:border-box}}
+html,body{{min-height:100%}}
+body{{margin:0 auto;padding:1rem;max-width:32rem;
+ background-color:#f5f4ef;
+ background-image:linear-gradient(rgba(255,255,255,.60),rgba(255,255,255,.88)),
+                  url("/assets/bg.jpg");
+ background-position:center center;
+ background-size:cover;
+ background-repeat:no-repeat;
+ color:#141414;
+ font-family:Georgia,"Times New Roman","Noto Serif",serif,'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji';
+ text-align:center;-webkit-text-size-adjust:100%}}
+h1{{font-size:1.35rem;font-weight:600;margin:0 0 clamp(0rem,4svh,8rem);
+ color:rgba(20,20,20,.82)}}
+h2{{font-size:1.1rem;font-weight:600;letter-spacing:.02em;margin:1.5rem 0 .75rem;
+ color:rgba(20,20,20,.82)}}
+form{{margin:0}}
+.row{{display:flex;gap:.75rem;justify-content:center;margin:0 0 .75rem}}
+.row form{{flex:1 1 0;display:flex}}
+.icon{{flex:1 1 0;background:none;border:0;padding:.5rem;font-size:2.75rem;line-height:1;
+ color:inherit;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}}
+.vid{{display:block;width:100%;margin:0 0 .75rem;padding:1rem;font-size:1.05rem;
+ font-family:inherit;color:inherit;
+ background:rgba(255,255,255,.10);
+ border:1px solid rgba(20,20,20,.28);
+ border-radius:.75rem;cursor:pointer;touch-action:manipulation;
+ word-break:break-word;overflow-wrap:anywhere}}
+.icon:active,.vid:active{{opacity:.55}}
+</style>
+</head><body>
+<body>
+<h1>Музей-усадьба Д.В. Веневитинова</h1>
 {buttons}
-<form method="post" action="/cmd/stop"><button>Стоп</button></form>
-<form method="post" action="/cmd/pause"><button>Пауза/Продолжить</button></form>
-<form method="post" action="/cmd/volup"><button>Громкость +</button></form>
-<form method="post" action="/cmd/voldown"><button>Громкость -</button></form>
-<form method="post" action="/cmd/projectorson"><button>Стенд ВКЛ</button></form>
-<form method="post" action="/cmd/projectorsoff"><button>Стенд ВЫКЛ</button></form>
+<h2>Управление</h2>
+<div class="row">
+<form method="post" action="/cmd/pause"><button class="icon">&#x23EF;&#xFE0F;</button></form>
+<form method="post" action="/cmd/stop"><button class="icon">&#x23F9;&#xFE0F;</button></form>
+<form method="post" action="/cmd/volup"><button class="icon">&#x1F50A;</button></form>
+<form method="post" action="/cmd/voldown"><button class="icon">&#x1F509;</button></form>
+</div>
+<h2>Проекторы</h2>
+<div class="row">
+<form method="post" action="/cmd/projectorson"><button class="icon">&#x1F7E2;&#xFE0F;</button></form>
+<form method="post" action="/cmd/projectorsoff"><button class="icon">&#x1F534;&#xFE0F;</button></form>
+</div>
 </body></html>"#
             )),
         }
@@ -118,7 +160,8 @@ async fn main() -> Result<()> {
         m.set_property("force-window", "immediate")?;
         m.set_property("vo", "x11")?;
         Ok(())
-    }).context("libMPV init failure")?;
+    })
+    .context("libMPV init failure")?;
 
     let (tx, mut rx) = mpsc::channel::<Command>(8);
 
@@ -151,6 +194,7 @@ async fn main() -> Result<()> {
     let app = Router::new()
         .route("/", get(AppState::index))
         .route("/cmd/{key}", post(AppState::cmd))
+        .nest_service("/assets", ServeDir::new("assets"))
         .with_state(state);
 
     let listener =
@@ -178,54 +222,66 @@ fn apply(
 ) -> Result<()> {
     match cmd {
         Command::Play(i) => {
-            info!("Playing fragment {i}");
+            info!("webserver command: playing fragment {i}");
             mpv.render(player.play(playlist.get(i).context("bad playlist index")?))
-                .context("Rendering the chosen fragment failed")
+                .context("render failed")
         }
         Command::Pause => {
-            info!("Toggling pause");
+            info!("webserver command: toggle pause");
             mpv.toggle_pause()
         }
         Command::VolUp => {
-            info!("Volume up");
+            info!("webserver command: volume up");
             mpv.change_vol(7)
         }
         Command::VolDown => {
-            info!("Volume up");
+            info!("webserver command: volume down");
             mpv.change_vol(-7)
         }
         Command::Stop => {
-            info!("Stop");
+            info!("webserver command: stop");
             mpv.render(player.stop()).context("Stop failed")
         }
         Command::ProjectorsOn => {
-            info!("Projectors: ON");
-            set_projectors_power(projectors, true)
+            info!("webserver command: projectors on");
+            projector_bulk_command(projectors, |dev| {
+                dev.power_on().context("power on command failed").map(drop)
+            })
+            .or_else(|e| {
+                warn!("{e:#}");
+                Ok(())
+            })
         }
         Command::ProjectorsOff => {
-            info!("Projectors: OFF");
-            set_projectors_power(projectors, false)
+            info!("webserver command: projectors off");
+            projector_bulk_command(projectors, |dev| {
+                dev.power_off()
+                    .context("power off command failed")
+                    .map(drop)
+            })
+            .or_else(|e| {
+                warn!("{e:#}");
+                Ok(())
+            })
         }
     }
 }
 
-fn set_projectors_power(projectors: &[Projector], on: bool) -> Result<()> {
-    let action = if on {
-        PjlinkDevice::power_on
-    } else {
-        PjlinkDevice::power_off
-    };
+fn projector_bulk_command(
+    projectors: &[Projector],
+    action: fn(&PjlinkDevice) -> Result<()>,
+) -> Result<()> {
     let handles: Vec<_> = projectors
         .iter()
         .map(|projector| {
             let ip = projector.ip.to_string();
             tokio::task::spawn_blocking(move || -> Result<()> {
                 PjlinkDevice::new(&ip)
-                    .context("Couldn't create a Pjlink device")
+                    .context(format!("{ip:#} init error"))
                     .and_then(|mut dev| {
                         action(&mut dev)
                             .map(drop)
-                            .context("Couldn't send command to Pjlink device")
+                            .context(format!("{ip:#} command failed"))
                     })
             })
         })
@@ -233,11 +289,12 @@ fn set_projectors_power(projectors: &[Projector], on: bool) -> Result<()> {
 
     tokio::task::block_in_place(|| futures::executor::block_on(futures::future::join_all(handles)))
         .into_iter()
-        .map(|r| r.context("asdasd").and_then(|inner| inner))
+        .map(|r| r.context("handle join error").and_then(|inner| inner))
         .fold(Ok(()), |acc, r| {
             if let Err(e) = &r {
-                warn!("{e:#}");
+                error!("{e:#}");
             }
             acc.and(r)
         })
+        .map_err(|_| anyhow::Error::msg("bulk command failed for some projectors"))
 }

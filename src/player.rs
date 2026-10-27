@@ -1,7 +1,7 @@
 use crate::settings::{Fragment, VideoPath};
 use anyhow::{Context, Result};
-use libmpv2::{events::*, *};
-use log::{debug, info, warn};
+use libmpv2::*;
+use log::{debug, info};
 use std::collections::LinkedList;
 use strum::{Display, EnumString};
 
@@ -81,13 +81,13 @@ impl Player {
             ),
         ) = (current, next)
         {
-            debug!("Found outro, queueing it to play first...");
+            debug!("currently playing clip has outro, playing that first");
             self.queue.push_front(next);
         }
         self.queue.append(&mut fragment.to_clips());
         self.queue
             .front()
-            .expect("At least one clip should always be present with the current implementation")
+            .expect("at least one clip should be queued")
             .clone()
     }
 
@@ -96,12 +96,12 @@ impl Player {
         self.queue.append(&mut self.idle.to_clips());
         self.queue
             .front()
-            .expect("At least one clip should always be present with the current implementation")
+            .expect("at least one clip should be queued")
             .clone()
     }
 
     pub fn process_eof(&mut self) -> Clip {
-        debug!("Processing eof...");
+        debug!("got EOF");
         let _current = self.queue.pop_front();
         match self.queue.front() {
             // Play next if there is any
@@ -126,8 +126,8 @@ impl MpvControls for Mpv {
             role: _role,
             is_loop,
         } = clip;
-        let path = path.to_str().context("Decoding path failed")?;
-        info!("Rendering clip {}", path);
+        let path = path.to_str().context("path decode failure")?;
+        info!("rendering {path:#}");
         self.command(
             "loadfile",
             &[
@@ -137,25 +137,25 @@ impl MpvControls for Mpv {
                 &format!("loop-file={}", if is_loop { "inf" } else { "no" }),
             ],
         )
-        .context(format!("Rendering {path} failed"))?;
+        .context(format!("rendering failure: {path:#}"))?;
         self.set_pause(false)
     }
 
     fn set_pause(&self, pause: bool) -> Result<()> {
         self.set_property("pause", pause)
-            .context("Setting pause state failed")
+            .context("pause command failure")
     }
 
     fn toggle_pause(&self) -> Result<()> {
         self.command("cycle", &["pause"])
-            .context("Toggling pause failed")
+            .context("pause cycle command failure")
     }
 
     fn change_vol(&self, vol_delta: i8) -> Result<()> {
         let vol: f64 = self
             .get_property("volume")
-            .context("Couldn't read volume")?;
+            .context("volume property couldn't be read")?;
         self.set_property("volume", (vol + f64::from(vol_delta)).clamp(0.0, 100.0))
-            .context("Couldn't set volume")
+            .context("volume property couldn't be set")
     }
 }
