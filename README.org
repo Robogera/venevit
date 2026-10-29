@@ -1,0 +1,95 @@
+#+TITLE: Проекторный стенд в музее-усадьбе Д.В. Веневитинова
+#+OPTIONS: ^:{}
+#+STARTUP: entitiespretty
+#+STARTUP: indent
+#+STARTUP: hidestars
+
+* Сборка
+
+#+begin_src bash
+  git clone <url>
+  cd venev-ng
+  cargo build --release
+#+end_src
+
+* Установка на x86_64 ПК с Linux.
+
+** Выбор дистрибутива
+
+Подойдёт любой дистрибутив, главное чтобы в репозиторях были:
+
+1. cage > 0.2.1
+2. mpv > 0.30.0
+3. kanshi > 1.0.0
+4. (опционально, только для сборки) rustc 2021
+5. (опционально, чтобы не закидывать файлы вручную) git
+
+Я использовал Fedora Server.
+
+** Подготовка пользователя
+
+#+begin_src bash
+  sudo useradd -ms /bin/bash kiosk
+  sudo usermod -aG video kiosk
+  sudo usermod -aG audio kiosk
+#+end_src
+
+** Установка зависимостей
+
+#+begin_src bash
+  sudo dnf install cage mpv mpv-devel wireplumber pipewire kanshi rustup git
+#+end_src
+
+** Подготовка rust окружения
+
+#+begin_src bash
+  sudo -u kiosk -s
+  rustup-init # выбрать stable версию в интерактивном меню
+#+end_src
+
+** Деплой и сборка софта
+
+#+begin_src bash
+  sudo -u kiosk -s
+  cd $HOME
+  git clone <url>
+  cd venevit
+  cargo build --release
+#+end_src
+
+** Деплой видео
+
+Файлы видео из проекта на мастере надо сложить в =./video/= внутри репозитория.
+
+#+begin_quote
+  //master.hq.int-sys.ru/root/Service/Музей-усадьба\ Веневитинова/video/
+#+end_quote
+
+** Подготовка киоска
+
+#+begin_src bash
+  sudo cp system/cage@.service /etc/systemd/system/
+  sudo cp system/kiosk /etc/pam.d/
+  sudo systemctl enable --now cage@tty1
+#+end_src
+
+Если всё сделано правильно, то все подключенные мониторы должны переключиться на tty1 и показать картинку с двумя стульями (хаха).
+
+* Траблшутинг
+
+** Проекторы не управляются из веб-морды
+
+Проверьте что проекторы доступны по сети с неттопа. По необходимости поменяйте ip проекторов в конфиге.
+
+#+begin_src toml
+  [[projectors]]
+  ip=192.168.1.100
+
+  [[projectors]]
+  ip=192.168.1.101
+#+end_src
+
+** Оринтация видео сбивается после выключения/включения проекторов
+
+Проверьте имена видео-выходов с помошью =wlr-randr= и поправьте их в =cfg/kanshi.conf=, они могут отличаться на разных неттопах.
+
