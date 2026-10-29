@@ -7,7 +7,7 @@
 * Сборка
 
 #+begin_src bash
-  git clone <url>
+  git clone http://git.hq.int-sys.ru/project/venevit
   cd venev-ng
   cargo build --release
 #+end_src
@@ -52,7 +52,7 @@
 #+begin_src bash
   sudo -u kiosk -s
   cd $HOME
-  git clone <url>
+  git clone http://git.hq.int-sys.ru/project/venevit
   cd venevit
   cargo build --release
 #+end_src
@@ -92,4 +92,17 @@
 ** Оринтация видео сбивается после выключения/включения проекторов
 
 Проверьте имена видео-выходов с помошью =wlr-randr= и поправьте их в =cfg/kanshi.conf=, они могут отличаться на разных неттопах.
+
+** Что-то не запускается...
+
+Проверьте соответствие путей в =cage@.service= и =start.sh= с реальностью.
+
+Для дебага всех связанных процессов можно использовать такую команду, чтобы увидеть вывод логов всех связанных systemd юнитов и топиков.
+
+#+begin_src bash
+  journalctl \
+  SYSLOG_IDENTIFIER=venev-kanshi \
+  + SYSLOG_IDENTIFIER=venev-ng \
+  + _SYSTEMD_UNIT=cage@tty1.service
+#+end_src
 
