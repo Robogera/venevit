@@ -1,0 +1,39 @@
+[Unit]
+Description=Cage Wayland compositor on %I
+After=systemd-user-sessions.service plymouth-quit-wait.service
+Before=graphical.target
+ConditionPathExists=/dev/tty0
+Wants=dbus.socket systemd-logind.service
+After=dbus.socket systemd-logind.service
+Conflicts=getty@%i.service
+After=getty@%i.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 16
+# ExecStart=/usr/bin/cage -dsm extend -- /home/kiosk/venevit/target/release/venev-ng
+ExecStart=/usr/bin/cage -dsm extend -- /home/kiosk/venevit/start.sh
+ExecStartPost=+sh -c "tty_name='%i'; exec chvt $${tty_name#tty}"
+Restart=always
+User=kiosk
+UtmpIdentifier=%I
+UtmpMode=user
+TTYPath=/dev/%I
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
+# Fail to start if not controlling the virtual terminal.
+StandardInput=tty-fail
+StartLimitInterval=0
+StartLimitBurst=0
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cage-%I
+
+# Set up a full (custom) user session for the user, required by Cage.
+PAMName=kiosk
+
+[Install]
+WantedBy=multi-user.target
+; Alias=display-manager.service
+DefaultInstance=tty7
